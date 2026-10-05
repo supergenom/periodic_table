@@ -41,7 +41,7 @@
 <h1 id="title">元素周期表</h1>
 <div id="viewport"><div id="board"></div></div>
 <div id="legend"></div>
-<div id="hint">ホイール: 拡大縮小 / ドラッグ: 移動</div>
+<div id="hint">ホイール: 拡大縮小 / ドラッグ: 移動 / ホイールボタン or Shift+ドラッグ: 回転 / 余白ダブルクリック: 角度リセット</div>
 
 <script>
 const SYMBOLS = "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
@@ -170,12 +170,14 @@ function onElementClick(el) {
   console.log("clicked:", el);
 }
 
-// ---- ズーム / パン ----
+// ---- ズーム / パン / 回転 ----
 const viewport = document.getElementById("viewport");
 const BOARD_W = 18 * CELL, BOARD_H = 10.6 * CELL;
-let scale = 1, tx = 0, ty = 0;
+const DEFAULT_ROT = { x: 22, y: -10 }, ROT_LIMIT = 60;
+let scale = 1, tx = 0, ty = 0, rotX = DEFAULT_ROT.x, rotY = DEFAULT_ROT.y;
 function apply() {
-  board.style.transform = `translate(${tx}px, ${ty}px) scale(${scale}) perspective(2200px) rotateX(22deg) rotateY(-10deg)`;
+  // 回転の中心は盤面の中央
+  board.style.transform = `translate(${tx}px, ${ty}px) scale(${scale}) translate(${BOARD_W / 2}px, ${BOARD_H / 2}px) perspective(2200px) rotateX(${rotX}deg) rotateY(${rotY}deg) translate(${-BOARD_W / 2}px, ${-BOARD_H / 2}px)`;
 }
 function fit() {
   const top = document.getElementById("title").getBoundingClientRect().bottom + 16;
@@ -199,10 +201,14 @@ viewport.addEventListener("wheel", e => {
   apply();
 }, { passive: false });
 
+// 左ドラッグ: 移動 / ホイールボタン or Shift+左ドラッグ: 回転
 let drag = null;
+const clampRot = v => Math.min(Math.max(v, -ROT_LIMIT), ROT_LIMIT);
+viewport.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });   // 自動スクロールを止める
 viewport.addEventListener("pointerdown", e => {
-  if (e.button !== 0) return;
-  drag = { x: e.clientX, y: e.clientY, moved: false };
+  if (e.button !== 0 && e.button !== 1) return;
+  const mode = e.button === 1 || e.shiftKey ? "rotate" : "pan";
+  drag = { x: e.clientX, y: e.clientY, moved: false, mode };
 });
 addEventListener("pointermove", e => {
   if (!drag) return;
@@ -210,11 +216,28 @@ addEventListener("pointermove", e => {
   if (!drag.moved && Math.hypot(dx, dy) < 4) return;
   drag.moved = true;
   viewport.classList.add("dragging");
-  tx += dx; ty += dy;
+  if (drag.mode === "rotate") {
+    rotY = clampRot(rotY + dx * 0.3);
+    rotX = clampRot(rotX - dy * 0.3);
+  } else {
+    tx += dx; ty += dy;
+  }
   drag.x = e.clientX; drag.y = e.clientY;
   apply();
 });
-addEventListener("pointerup", () => { drag = null; viewport.classList.remove("dragging"); });
+addEventListener("pointerup", () => {
+  // ドラッグ直後のクリックで元素の詳細が開かないようにする
+  if (drag?.moved) addEventListener("click", ev => ev.stopPropagation(), { capture: true, once: true });
+  drag = null;
+  viewport.classList.remove("dragging");
+});
+
+// 盤面以外をダブルクリックで角度をリセット
+viewport.addEventListener("dblclick", e => {
+  if (e.target.closest(".cube")) return;
+  rotX = DEFAULT_ROT.x; rotY = DEFAULT_ROT.y;
+  apply();
+});
 </script>
 </body>
 </html>
