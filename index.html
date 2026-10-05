@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>元素周期表</title>
+<style>
+  :root {
+    --cell: 96px;      /* 1マスの大きさ */
+    --size: 86px;      /* 立方体の一辺 */
+    --depth: 20px;     /* 立方体の厚み */
+    --radius: 13px;    /* 角のR */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: radial-gradient(circle at 50% 30%, #2b3350, #11141f 70%); font-family: "Helvetica Neue", Arial, "Hiragino Sans", sans-serif; }
+  #viewport { position: fixed; inset: 0; cursor: grab; touch-action: none; }
+  #viewport.dragging { cursor: grabbing; }
+  #board { position: absolute; left: 0; top: 0; transform-origin: 0 0; transform-style: preserve-3d; will-change: transform; }
+  .cube { position: absolute; width: var(--size); height: var(--size); transform-style: preserve-3d; transition: transform .15s ease; }
+  .cube:hover { transform: translateZ(10px); }
+  .layer, .front { position: absolute; inset: 0; border-radius: var(--radius); }
+  .layer { background: color-mix(in srgb, var(--c) 55%, #000); }
+  .front {
+    transform: translateZ(var(--depth));
+    background: linear-gradient(145deg, color-mix(in srgb, var(--c) 78%, #fff), var(--c) 60%, color-mix(in srgb, var(--c) 85%, #000));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), inset 0 2px 3px rgba(255,255,255,.5);
+    color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.55);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; user-select: none;
+  }
+  .num { position: absolute; top: 6px; left: 9px; font-size: 12px; font-weight: 600; opacity: .95; }
+  .sym { font-size: 32px; font-weight: 700; line-height: 1; margin-top: -2px; }
+  .name { position: absolute; bottom: 8px; left: 4px; right: 4px; text-align: center; font-size: 12px; font-style: italic; white-space: nowrap; opacity: .95; }
+  #title { position: fixed; top: 18px; left: 0; right: 0; margin: 0; text-align: center; color: #f2f4ff; font-size: 44px; font-weight: 700; letter-spacing: .12em; text-shadow: 0 3px 12px rgba(0,0,0,.6); pointer-events: none; z-index: 1; }
+  #legend { position: fixed; left: 16px; bottom: 16px; display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 70vw; color: #dde; font-size: 12px; pointer-events: none; }
+  #legend span::before { content: ""; display: inline-block; width: 11px; height: 11px; border-radius: 3px; background: var(--c); margin-right: 5px; vertical-align: -1px; }
+  #hint { position: fixed; right: 16px; bottom: 16px; color: #99a; font-size: 12px; pointer-events: none; }
+</style>
+</head>
+<body>
+<h1 id="title">元素周期表</h1>
+<div id="viewport"><div id="board"></div></div>
+<div id="legend"></div>
+<div id="hint">ホイール: 拡大縮小 / ドラッグ: 移動</div>
+
+<script>
+const SYMBOLS = "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
+
+// 英語の元素名（周期ごと）
+const NAMES = [
+  // 1-2
+  "Hydrogen Helium",
+  // 3-10
+  "Lithium Beryllium Boron Carbon Nitrogen Oxygen Fluorine Neon",
+  // 11-18
+  "Sodium Magnesium Aluminium Silicon Phosphorus Sulfur Chlorine Argon",
+  // 19-36
+  "Potassium Calcium Scandium Titanium Vanadium Chromium Manganese Iron Cobalt",
+  "Nickel Copper Zinc Gallium Germanium Arsenic Selenium Bromine Krypton",
+  // 37-54
+  "Rubidium Strontium Yttrium Zirconium Niobium Molybdenum Technetium Ruthenium Rhodium",
+  "Palladium Silver Cadmium Indium Tin Antimony Tellurium Iodine Xenon",
+  // 55-71
+  "Caesium Barium Lanthanum Cerium Praseodymium Neodymium Promethium Samarium Europium",
+  "Gadolinium Terbium Dysprosium Holmium Erbium Thulium Ytterbium Lutetium",
+  // 72-86
+  "Hafnium Tantalum Tungsten Rhenium Osmium Iridium Platinum Gold",
+  "Mercury Thallium Lead Bismuth Polonium Astatine Radon",
+  // 87-103
+  "Francium Radium Actinium Thorium Protactinium Uranium Neptunium Plutonium Americium",
+  "Curium Berkelium Californium Einsteinium Fermium Mendelevium Nobelium Lawrencium",
+  // 104-118
+  "Rutherfordium Dubnium Seaborgium Bohrium Hassium Meitnerium Darmstadtium Roentgenium",
+  "Copernicium Nihonium Flerovium Moscovium Livermorium Tennessine Oganesson",
+].join(" ").split(" ");
+if (NAMES.length !== SYMBOLS.length) console.error("NAMES と SYMBOLS の数が一致しません", NAMES.length, SYMBOLS.length);
+
+const CATEGORIES = {
+  alkali:      { label: "アルカリ金属",     color: "#e5534b" },
+  alkaline:    { label: "アルカリ土類金属", color: "#e08a2e" },
+  transition:  { label: "遷移金属",         color: "#d4a72c" },
+  post:        { label: "典型金属",         color: "#3fae6a" },
+  metalloid:   { label: "半金属",           color: "#2aa7a0" },
+  nonmetal:    { label: "非金属",           color: "#3b82d6" },
+  halogen:     { label: "ハロゲン",         color: "#7a5fd6" },
+  noble:       { label: "貴ガス",           color: "#c256b8" },
+  lanthanide:  { label: "ランタノイド",     color: "#8a6a4f" },
+  actinide:    { label: "アクチノイド",     color: "#a0526b" },
+};
+
+const inList = (n, arr) => arr.includes(n);
+function categoryOf(n) {
+  if (inList(n, [3, 11, 19, 37, 55, 87])) return "alkali";
+  if (inList(n, [4, 12, 20, 38, 56, 88])) return "alkaline";
+  if (inList(n, [9, 17, 35, 53, 85, 117])) return "halogen";
+  if (inList(n, [2, 10, 18, 36, 54, 86, 118])) return "noble";
+  if (inList(n, [5, 14, 32, 33, 51, 52])) return "metalloid";
+  if (inList(n, [1, 6, 7, 8, 15, 16, 34])) return "nonmetal";
+  if (n >= 57 && n <= 71) return "lanthanide";
+  if (n >= 89 && n <= 103) return "actinide";
+  if (inList(n, [13, 31, 49, 50, 81, 82, 83, 84, 113, 114, 115, 116])) return "post";
+  return "transition";
+}
+
+// 原子番号 → (行, 列)
+const PERIOD_END = [2, 10, 18, 36, 54, 86, 118];
+function positionOf(n) {
+  const p = PERIOD_END.findIndex(e => n <= e) + 1;
+  const start = p === 1 ? 1 : PERIOD_END[p - 2] + 1;
+  const i = n - start;
+  if (p === 1) return { row: 1, col: i === 0 ? 1 : 18 };
+  if (p <= 3) return { row: p, col: i < 2 ? i + 1 : i + 11 };
+  if (p <= 5) return { row: p, col: i + 1 };
+  // 第6・7周期: f-block は下段に分離
+  if (i < 2) return { row: p, col: i + 1 };
+  if (i < 17) return { row: p + 3, col: i + 1 };   // 第9/10行, 列3〜17
+  return { row: p, col: i - 13 };
+}
+
+const ELEMENTS = SYMBOLS.map((symbol, k) => {
+  const number = k + 1;
+  return { number, symbol, name: NAMES[k], category: categoryOf(number), ...positionOf(number) };
+});
+
+// ---- 描画 ----
+const cssPx = name => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+const CELL = cssPx("--cell"), DEPTH = cssPx("--depth"), LAYERS = 10;
+const board = document.getElementById("board");
+for (const el of ELEMENTS) {
+  const cube = document.createElement("div");
+  cube.className = "cube";
+  cube.style.setProperty("--c", CATEGORIES[el.category].color);
+  cube.style.left = (el.col - 1) * CELL + "px";
+  cube.style.top = (el.row - 1 + (el.row >= 8 ? 0.6 : 0)) * CELL + "px";
+  // 角丸の厚みは薄いレイヤーを積み重ねて表現
+  for (let i = 0; i < LAYERS; i++) {
+    const l = document.createElement("div");
+    l.className = "layer";
+    l.style.transform = `translateZ(${(i * DEPTH) / LAYERS}px)`;
+    cube.appendChild(l);
+  }
+  const f = document.createElement("div");
+  f.className = "front";
+  f.innerHTML = `<span class="num">${el.number}</span><span class="sym">${el.symbol}</span><span class="name">${el.name}</span>`;
+  f.addEventListener("click", () => onElementClick(el));
+  cube.appendChild(f);
+  board.appendChild(cube);
+}
+
+// 長い元素名は前面の幅に収まるまで文字を縮める（下限10px）
+for (const n of board.querySelectorAll(".name")) {
+  let size = 12;
+  while (n.scrollWidth > n.clientWidth && size > 10) {
+    size -= 0.5;
+    n.style.fontSize = size + "px";
+  }
+}
+
+// 凡例
+const legend = document.getElementById("legend");
+for (const c of Object.values(CATEGORIES)) {
+  const s = document.createElement("span");
+  s.style.setProperty("--c", c.color);
+  s.textContent = c.label;
+  legend.appendChild(s);
+}
+
+// 詳細表示（後から実装）
+function onElementClick(el) {
+  console.log("clicked:", el);
+}
+
+// ---- ズーム / パン ----
+const viewport = document.getElementById("viewport");
+const BOARD_W = 18 * CELL, BOARD_H = 10.6 * CELL;
+let scale = 1, tx = 0, ty = 0;
+function apply() {
+  board.style.transform = `translate(${tx}px, ${ty}px) scale(${scale}) perspective(2200px) rotateX(22deg) rotateY(-10deg)`;
+}
+function fit() {
+  const top = document.getElementById("title").getBoundingClientRect().bottom + 16;
+  const availH = innerHeight - top - 50;   // 下は凡例ぶん空ける
+  scale = Math.min(innerWidth / (BOARD_W + 80), availH / (BOARD_H + 40));
+  tx = (innerWidth - BOARD_W * scale) / 2;
+  ty = top + (availH - BOARD_H * scale) / 2;
+  apply();
+}
+addEventListener("resize", fit);
+fit();
+
+viewport.addEventListener("wheel", e => {
+  e.preventDefault();
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  const next = Math.min(Math.max(scale * factor, 0.2), 8);
+  const k = next / scale;
+  tx = e.clientX - (e.clientX - tx) * k;   // カーソル位置を基準に拡大縮小
+  ty = e.clientY - (e.clientY - ty) * k;
+  scale = next;
+  apply();
+}, { passive: false });
+
+let drag = null;
+viewport.addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;
+  drag = { x: e.clientX, y: e.clientY, moved: false };
+});
+addEventListener("pointermove", e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+  drag.moved = true;
+  viewport.classList.add("dragging");
+  tx += dx; ty += dy;
+  drag.x = e.clientX; drag.y = e.clientY;
+  apply();
+});
+addEventListener("pointerup", () => { drag = null; viewport.classList.remove("dragging"); });
+</script>
+</body>
+</html>
