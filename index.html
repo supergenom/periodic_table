@@ -32,9 +32,13 @@
   .sym { font-size: 32px; font-weight: 700; line-height: 1; margin-top: -2px; }
   .name { position: absolute; bottom: 8px; left: 4px; right: 4px; text-align: center; font-size: 12px; font-style: italic; white-space: nowrap; opacity: .95; }
   #title { position: fixed; top: 18px; left: 0; right: 0; margin: 0; text-align: center; color: #f2f4ff; font-size: 44px; font-weight: 700; letter-spacing: .12em; text-shadow: 0 3px 12px rgba(0,0,0,.6); pointer-events: none; z-index: 1; }
-  #legend { position: fixed; left: 16px; bottom: 16px; display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 70vw; color: #dde; font-size: 12px; pointer-events: none; }
+  /* 右下: 凡例（1行目: アルカリ金属〜貴ガス / 2行目: ランタノイド・アクチノイド）、その下に操作説明 */
+  #footer { position: fixed; left: 16px; right: 16px; bottom: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
+  #legend { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; color: #dde; font-size: 12px; }
+  .legend-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 14px; }
   #legend span::before { content: ""; display: inline-block; width: 11px; height: 11px; border-radius: 3px; background: var(--c); margin-right: 5px; vertical-align: -1px; }
-  #hint { position: fixed; right: 16px; bottom: 16px; color: #99a; font-size: 12px; pointer-events: none; }
+  #hint { color: #99a; font-size: 12px; text-align: right; }
+  #hint span { white-space: nowrap; }   /* 折り返しは「/」の位置だけ */
 
   /* ---- 詳細パネル ---- */
   /* 背景のぼかし（backdrop-filter）は Raspberry Pi で非常に重いため使わず、少し濃い半透明にする */
@@ -96,8 +100,10 @@
 <body>
 <h1 id="title">元素周期表</h1>
 <div id="viewport"><div id="board"></div></div>
-<div id="legend"></div>
-<div id="hint">ホイール: 拡大縮小 / ドラッグ: 移動 / ホイールボタン or Shift+ドラッグ: 回転 / 余白ダブルクリック: 角度リセット</div>
+<div id="footer">
+  <div id="legend"></div>
+  <div id="hint"><span>ホイール: 拡大縮小</span> / <span>ドラッグ: 移動</span> / <span>ホイールボタン or Shift+ドラッグ: 回転</span> / <span>余白ダブルクリック: 角度リセット</span></div>
+</div>
 
 <div id="overlay" hidden>
   <div id="panel">
@@ -194,14 +200,17 @@ const ELEMENTS = SYMBOLS.map((symbol, k) => {
 
 // ---- 描画 ----
 const cssPx = name => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
-const CELL = cssPx("--cell"), DEPTH = cssPx("--depth"), LAYERS = 10;
+const CELL = cssPx("--cell"), SIZE = cssPx("--size"), DEPTH = cssPx("--depth"), LAYERS = 10;
+// 縦位置。下段（ランタノイド・アクチノイド）は、本体の表との間がちょうど立方体1つ分空くように詰める
+const F_ROW_TOP = 6 * CELL + SIZE * 2;   // 第7周期の下端 + 立方体1つ分
+const rowTop = row => row >= 9 ? F_ROW_TOP + (row - 9) * CELL : (row - 1) * CELL;
 const board = document.getElementById("board");
 for (const el of ELEMENTS) {
   const cube = document.createElement("div");
   cube.className = "cube";
   cube.style.setProperty("--c", CATEGORIES[el.category].color);
   cube.style.left = (el.col - 1) * CELL + "px";
-  cube.style.top = (el.row - 1 + (el.row >= 8 ? 0.6 : 0)) * CELL + "px";
+  cube.style.top = rowTop(el.row) + "px";
   // 角丸の厚みは薄いレイヤーを積み重ねて表現
   for (let i = 0; i < LAYERS; i++) {
     const l = document.createElement("div");
@@ -228,11 +237,17 @@ for (const n of board.querySelectorAll(".name")) {
 
 // 凡例
 const legend = document.getElementById("legend");
-for (const c of Object.values(CATEGORIES)) {
-  const s = document.createElement("span");
-  s.style.setProperty("--c", c.color);
-  s.textContent = c.label;
-  legend.appendChild(s);
+const LEGEND_ROWS = [Object.keys(CATEGORIES).filter(k => k !== "lanthanide" && k !== "actinide"), ["lanthanide", "actinide"]];
+for (const keys of LEGEND_ROWS) {
+  const row = document.createElement("div");
+  row.className = "legend-row";
+  for (const k of keys) {
+    const s = document.createElement("span");
+    s.style.setProperty("--c", CATEGORIES[k].color);
+    s.textContent = CATEGORIES[k].label;
+    row.appendChild(s);
+  }
+  legend.appendChild(row);
 }
 
 // ---- 詳細パネル ----
@@ -314,7 +329,7 @@ addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
 
 // ---- ズーム / パン / 回転 ----
 const viewport = document.getElementById("viewport");
-const BOARD_W = 18 * CELL, BOARD_H = 10.6 * CELL;
+const BOARD_W = 18 * CELL, BOARD_H = rowTop(10) + SIZE;
 const DEFAULT_ROT = { x: 0, y: 0 }, ROT_LIMIT = 60;   // 初期表示は正面から
 let scale = 1, tx = 0, ty = 0, rotX = DEFAULT_ROT.x, rotY = DEFAULT_ROT.y;
 function apply() {
@@ -322,11 +337,17 @@ function apply() {
   board.style.transform = `translate(${tx}px, ${ty}px) scale(${scale}) translate(${BOARD_W / 2}px, ${BOARD_H / 2}px) perspective(2200px) rotateX(${rotX}deg) rotateY(${rotY}deg) translate(${-BOARD_W / 2}px, ${-BOARD_H / 2}px)`;
 }
 function fit() {
-  const top = document.getElementById("title").getBoundingClientRect().bottom + 16;
-  const availH = innerHeight - top - 50;   // 下は凡例ぶん空ける
-  scale = Math.min(innerWidth / (BOARD_W + 80), availH / (BOARD_H + 40));
+  // タイトルと表を1つのまとまりとして、画面の上下中央に置く（タイトルは表のすぐ上）
+  const title = document.getElementById("title");
+  const TITLE_GAP = 14, MARGIN = 16;
+  const footerH = document.getElementById("footer").offsetHeight + 20;   // 下は凡例・操作説明ぶん空ける
+  const availH = innerHeight - MARGIN - footerH;
+  scale = Math.min(innerWidth / (BOARD_W + 80), (availH - title.offsetHeight - TITLE_GAP) / BOARD_H);
+  const groupH = title.offsetHeight + TITLE_GAP + BOARD_H * scale;
+  const y0 = MARGIN + Math.max(0, (availH - groupH) / 2);
+  title.style.top = y0 + "px";
   tx = (innerWidth - BOARD_W * scale) / 2;
-  ty = top + (availH - BOARD_H * scale) / 2;
+  ty = y0 + title.offsetHeight + TITLE_GAP;
   apply();
 }
 addEventListener("resize", fit);
