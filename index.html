@@ -35,6 +35,50 @@
   #legend { position: fixed; left: 16px; bottom: 16px; display: flex; flex-wrap: wrap; gap: 6px 14px; max-width: 70vw; color: #dde; font-size: 12px; pointer-events: none; }
   #legend span::before { content: ""; display: inline-block; width: 11px; height: 11px; border-radius: 3px; background: var(--c); margin-right: 5px; vertical-align: -1px; }
   #hint { position: fixed; right: 16px; bottom: 16px; color: #99a; font-size: 12px; pointer-events: none; }
+
+  /* ---- 詳細パネル ---- */
+  #overlay { position: fixed; inset: 0; z-index: 10; background: rgba(10, 12, 20, 0); backdrop-filter: blur(0); transition: background .45s, backdrop-filter .45s; }
+  #overlay.open { background: rgba(10, 12, 20, .6); backdrop-filter: blur(4px); }
+  #overlay[hidden] { display: none; }
+  #panel {
+    position: absolute; inset: 24px; display: flex; flex-direction: column;
+    transform-origin: 0 0; transition: transform .45s cubic-bezier(.2, .8, .2, 1), opacity .45s;
+    background: rgba(24, 28, 44, .82); color: #e8eaf4;
+    border: 1px solid color-mix(in srgb, var(--c) 60%, transparent); border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .08);
+    overflow: hidden;
+  }
+  #panel .close { position: absolute; top: 12px; right: 14px; width: 40px; height: 40px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, .08); color: #fff; font-size: 26px; line-height: 1; cursor: pointer; }
+  #panel .close:hover { background: rgba(255, 255, 255, .18); }
+  #panel .head { display: flex; align-items: center; gap: 18px; padding: 18px 70px 16px 22px; border-bottom: 1px solid rgba(255, 255, 255, .08); background: linear-gradient(90deg, color-mix(in srgb, var(--c) 35%, transparent), transparent 60%); }
+  #panel .badge { position: relative; width: 72px; height: 72px; flex: none; border-radius: 13px; display: flex; align-items: center; justify-content: center; background: linear-gradient(145deg, color-mix(in srgb, var(--c) 78%, #fff), var(--c) 60%, color-mix(in srgb, var(--c) 85%, #000)); box-shadow: 0 6px 0 color-mix(in srgb, var(--c) 55%, #000); text-shadow: 0 1px 2px rgba(0, 0, 0, .55); }
+  #panel .badge .num { position: absolute; top: 5px; left: 8px; font-size: 12px; font-weight: 600; }
+  #panel .badge .sym { font-size: 32px; font-weight: 700; }
+  #panel .ja { font-size: 28px; font-weight: 700; }
+  #panel .en { font-style: italic; opacity: .85; }
+  #panel .meta { font-size: 13px; opacity: .7; margin-top: 2px; }
+  #panel .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
+  #panel .props { overflow-y: auto; padding: 8px 22px 22px; }
+  #panel h3 { margin: 18px 0 6px; padding: 4px 10px; font-size: 14px; border-radius: 6px; background: color-mix(in srgb, var(--c) 40%, transparent); }
+  #panel table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  #panel th, #panel td { padding: 6px 10px; border-bottom: 1px solid rgba(255, 255, 255, .07); text-align: left; vertical-align: top; }
+  #panel th { width: 38%; font-weight: 600; color: #b8bdd6; }
+  #panel .props > table { table-layout: fixed; }   /* 項目列の幅を固定 */
+  #panel .vp-wrap { overflow-x: auto; }
+  #panel table.vp { width: auto; font-size: 12px; }
+  #panel table.vp th, #panel table.vp td { width: auto; padding: 2px 5px; border: 1px solid rgba(255, 255, 255, .1); text-align: center; white-space: nowrap; }
+  #panel .source { margin-top: 18px; font-size: 12px; opacity: .7; }
+  #panel .source a { color: #9cc3ff; }
+  #panel .pending { margin-top: 24px; opacity: .75; }
+  #panel .bohr { display: flex; align-items: center; justify-content: center; padding: 22px; border-left: 1px solid rgba(255, 255, 255, .08); }
+  #panel .bohr-frame { width: min(33vw, 33vh); aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 2px dashed rgba(255, 255, 255, .25); border-radius: 18px; color: rgba(255, 255, 255, .4); font-size: 14px; }
+  /* 縦長画面: 上に基本特性、下にボーアモデル */
+  @media (max-aspect-ratio: 1/1) {
+    #panel { inset: 10px; }
+    #panel .body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+    #panel .bohr { border-left: 0; border-top: 1px solid rgba(255, 255, 255, .08); padding: 14px; }
+    #panel .bohr-frame { width: min(60vw, 33vh); }
+  }
 </style>
 </head>
 <body>
@@ -43,6 +87,18 @@
 <div id="legend"></div>
 <div id="hint">ホイール: 拡大縮小 / ドラッグ: 移動 / ホイールボタン or Shift+ドラッグ: 回転 / 余白ダブルクリック: 角度リセット</div>
 
+<div id="overlay" hidden>
+  <div id="panel">
+    <button class="close" aria-label="閉じる">×</button>
+    <div class="head"></div>
+    <div class="body">
+      <div class="props"></div>
+      <div class="bohr"><div class="bohr-frame">ボーアモデル（準備中）</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="element-details.js"></script>
 <script>
 const SYMBOLS = "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
 
@@ -142,7 +198,7 @@ for (const el of ELEMENTS) {
   const f = document.createElement("div");
   f.className = "front";
   f.innerHTML = `<span class="num">${el.number}</span><span class="sym">${el.symbol}</span><span class="name">${el.name}</span>`;
-  f.addEventListener("click", () => onElementClick(el));
+  f.addEventListener("click", () => onElementClick(el, f));
   cube.appendChild(f);
   board.appendChild(cube);
 }
@@ -165,10 +221,74 @@ for (const c of Object.values(CATEGORIES)) {
   legend.appendChild(s);
 }
 
-// 詳細表示（後から実装）
-function onElementClick(el) {
-  console.log("clicked:", el);
+// ---- 詳細パネル ----
+const overlay = document.getElementById("overlay");
+const panel = document.getElementById("panel");
+const VP_PRESSURES = ["1", "10", "100", "1 k", "10 k", "100 k"];
+let openFrom = null;   // 開いた元素の前面（閉じるときに戻る先）
+
+function renderValue(v) {
+  if (typeof v === "string") return v;
+  if (v.vaporPressure) {
+    const cells = v.vaporPressure.map(t => `<td>${t ?? ""}</td>`).join("");
+    return `<div class="vp-wrap"><table class="vp"><tr><th>圧力 (Pa)</th>${VP_PRESSURES.map(p => `<th>${p}</th>`).join("")}</tr>` +
+           `<tr><th>温度 (K)</th>${cells}</tr></table></div>`;
+  }
+  return "";
 }
+
+function renderPanel(el) {
+  const d = ELEMENT_DETAILS[el.number];
+  const cat = CATEGORIES[el.category];
+  panel.style.setProperty("--c", cat.color);
+  panel.querySelector(".head").innerHTML =
+    `<div class="badge"><span class="num">${el.number}</span><span class="sym">${el.symbol}</span></div>` +
+    `<div><div class="ja">${d ? d.ja : el.name}</div><div class="en">${el.name}</div>` +
+    `<div class="meta">原子番号 ${el.number} ・ ${cat.label}</div></div>`;
+  panel.querySelector(".props").innerHTML = d
+    ? d.sections.map(s => `<h3>${s.title}</h3><table>` +
+        s.rows.map(([k, v]) => `<tr><th>${k}</th><td>${renderValue(v)}</td></tr>`).join("") +
+        `</table>`).join("") +
+      `<p class="source">出典: <a href="${d.source}" target="_blank" rel="noopener">Wikipedia日本語版「${d.ja}」</a>（CC BY-SA 4.0）</p>`
+    : `<p class="pending">詳細データは準備中です。</p>`;
+  panel.querySelector(".props").scrollTop = 0;
+}
+
+// パネルを元素の前面の位置・大きさに縮めた transform
+function shrinkTo(front) {
+  // パネル側は transform の影響を受けない offset 系で測る（overlay は画面全体）
+  const a = front.getBoundingClientRect();
+  const b = { left: panel.offsetLeft, top: panel.offsetTop, width: panel.offsetWidth, height: panel.offsetHeight };
+  return `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${a.width / b.width}, ${a.height / b.height})`;
+}
+
+function onElementClick(el, front) {
+  renderPanel(el);
+  openFrom = front;
+  overlay.hidden = false;
+  panel.style.transition = "none";
+  panel.style.transform = shrinkTo(front);
+  panel.style.opacity = "0.4";
+  overlay.getBoundingClientRect();   // 初期状態を確定させてからアニメーション
+  overlay.classList.add("open");
+  panel.style.transition = "";
+  panel.style.transform = "none";
+  panel.style.opacity = "1";
+}
+
+function closePanel() {
+  if (overlay.hidden || !overlay.classList.contains("open")) return;
+  overlay.classList.remove("open");
+  panel.style.transform = shrinkTo(openFrom);
+  panel.style.opacity = "0";
+  panel.addEventListener("transitionend", () => {
+    if (!overlay.classList.contains("open")) overlay.hidden = true;   // 閉じている途中で再度開いた場合は隠さない
+  }, { once: true });
+}
+
+panel.querySelector(".close").addEventListener("click", closePanel);
+overlay.addEventListener("click", e => { if (e.target === overlay) closePanel(); });
+addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
 
 // ---- ズーム / パン / 回転 ----
 const viewport = document.getElementById("viewport");
