@@ -12,6 +12,11 @@ const BOHR = (() => {
   let mode = "2d";
   try { mode = localStorage.getItem("bohrMode") === "3d" ? "3d" : "2d"; } catch (e) {}
   let host = null, current = null, raf = null;
+  // 縦長画面での「たたむ」状態。たたんで隠れている間はアニメーションを止めて軽くする
+  const portrait = matchMedia("(max-aspect-ratio: 1/1)");
+  let active = false, folded = false, asleep = false;
+  const sleeping = () => !active || (asleep && portrait.matches);
+  const next = fn => { raf = sleeping() ? null : requestAnimationFrame(fn); };   // 次のコマを予約
 
   // 殻の数に応じてリングの半径を決める（外側が枠からはみ出さないように間隔を詰める）
   function radii(count, first, step, outer) {
@@ -23,7 +28,7 @@ const BOHR = (() => {
     return counts.map((n, i) => ({ n, r: rs[i], sp: SPEEDS[i], c: COLORS[i], t: SHELL_NAMES[i] + n }));
   }
 
-  function stop() {
+  function pause() {
     if (raf) cancelAnimationFrame(raf);
     raf = null;
     if (three.ready) three.controls.enabled = false;
@@ -73,10 +78,10 @@ const BOHR = (() => {
         if (o.d.parentNode !== target) target.appendChild(o.d);
         o.d.setAttribute("opacity", behind ? 0.55 : 1);
       }
-      if (!reduce) raf = requestAnimationFrame(draw);
+      if (!reduce) next(draw);
     }
     draw(0);
-    if (!reduce) raf = requestAnimationFrame(draw);
+    if (!reduce) next(draw);
   }
 
   // ---------------- 3D版（Three.js r128） ----------------
@@ -120,7 +125,7 @@ const BOHR = (() => {
 
   function resize3D() {
     const box = three.renderer.domElement.parentElement;
-    if (!box || !box.clientWidth) return;
+    if (!box || !box.clientWidth || !box.clientHeight) return;   // たたんで高さ0のときは何もしない
     three.renderer.setSize(box.clientWidth, box.clientHeight);
     three.camera.aspect = box.clientWidth / box.clientHeight;
     three.camera.updateProjectionMatrix();
@@ -206,10 +211,10 @@ const BOHR = (() => {
         }
         three.controls.update();
         three.renderer.render(three.scene, three.camera);
-        raf = requestAnimationFrame(loop);
+        next(loop);
       };
-      stop();
-      three.controls.enabled = true;   // stop() で無効になるので、その後で有効にする
+      pause();
+      three.controls.enabled = true;   // pause() で無効になるので、その後で有効にする
       loop();
     }).catch(() => {
       three.loading = null;   // 次回もう一度試せるようにする
@@ -219,7 +224,7 @@ const BOHR = (() => {
 
   // ---------------- 外から呼ぶ部分 ----------------
   function render() {
-    stop();
+    pause();
     const stage = host.querySelector(".bohr-stage");
     host.querySelectorAll(".bohr-mode button").forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
     host.querySelector(".bohr-help").textContent = mode === "3d"
@@ -232,7 +237,8 @@ const BOHR = (() => {
     if (host !== container) {
       host = container;
       host.innerHTML =
-        `<div class="bohr-mode"><button data-mode="2d">2D</button><button data-mode="3d">3D</button></div>` +
+        `<div class="bohr-bar"><div class="bohr-mode"><button data-mode="2d">2D</button><button data-mode="3d">3D</button></div>` +
+        `<button class="bohr-fold">たたむ</button></div>` +
         `<div class="bohr-stage"></div><div class="bohr-help"></div>` +
         `<div class="bohr-source">データ出典：PubChem</div>`;
       host.querySelectorAll(".bohr-mode button").forEach(b => b.addEventListener("click", () => {
@@ -240,9 +246,31 @@ const BOHR = (() => {
         try { localStorage.setItem("bohrMode", mode); } catch (e) {}
         render();
       }));
+      host.querySelector(".bohr-fold").addEventListener("click", () => setFolded(!folded));
+      // 縦長→横長に回転したら、たたんでいても表示されるのでアニメーションを再開する
+      portrait.addEventListener("change", () => { if (!portrait.matches && active && !raf) render(); });
     }
     current = { symbol, counts };
+    active = true;
     render();
+  }
+
+  function setFolded(on) {
+    folded = on;
+    host.classList.toggle("folded", on);
+    host.querySelector(".bohr-fold").textContent = on ? "ひらく" : "たたむ";
+    if (on) {
+      setTimeout(() => { if (folded) asleep = true; }, 400);   // 下にしまう動きが終わってから止める
+    } else {
+      asleep = false;
+      if (active && !raf) render();   // 止めていたアニメーションを再開
+    }
+  }
+
+  // パネルを閉じたとき: アニメーションを止める
+  function stop() {
+    active = false;
+    pause();
   }
 
   return { show, stop };

@@ -81,7 +81,9 @@
   #panel .source a { color: #9cc3ff; }
   #panel .pending { margin-top: 24px; opacity: .75; }
   #panel .bohr { position: relative; display: flex; flex-direction: column; min-height: 0; padding: 14px 18px 10px; border-left: 1px solid rgba(255, 255, 255, .08); }
-  #panel .bohr-mode { align-self: center; display: flex; border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; overflow: hidden; }
+  #panel .bohr-bar { align-self: center; display: flex; gap: 10px; }
+  #panel .bohr-fold { display: none; padding: 5px 16px; border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; background: transparent; color: #c8cce0; font-size: 13px; font-weight: 600; cursor: pointer; }
+  #panel .bohr-mode { display: flex; border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; overflow: hidden; }
   #panel .bohr-mode button { padding: 5px 18px; border: 0; background: transparent; color: #c8cce0; font-size: 13px; font-weight: 600; cursor: pointer; }
   #panel .bohr-mode button.on { background: color-mix(in srgb, var(--c) 55%, transparent); color: #fff; }
   #panel .bohr-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
@@ -96,7 +98,11 @@
     #panel { inset: 10px; }
     #panel .body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
     #panel .bohr { border-left: 0; border-top: 1px solid rgba(255, 255, 255, .08); padding: 14px; }
-    #panel .bohr-stage { flex: none; height: 38vh; }
+    #panel .bohr-stage { flex: none; height: 38vh; overflow: hidden; transition: height .35s ease; }
+    /* 「たたむ」ボタンは縦長画面だけ。たたむとアニメーション部分の高さが0になり、下へしまわれる */
+    #panel .bohr-fold { display: block; }
+    #panel .bohr.folded .bohr-stage { height: 0; }
+    #panel .bohr.folded .bohr-help, #panel .bohr.folded .bohr-source { display: none; }
   }
 </style>
 </head>
