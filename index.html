@@ -37,13 +37,16 @@
   #hint { position: fixed; right: 16px; bottom: 16px; color: #99a; font-size: 12px; pointer-events: none; }
 
   /* ---- 詳細パネル ---- */
-  #overlay { position: fixed; inset: 0; z-index: 10; background: rgba(10, 12, 20, 0); backdrop-filter: blur(0); transition: background .45s, backdrop-filter .45s; }
-  #overlay.open { background: rgba(10, 12, 20, .6); backdrop-filter: blur(4px); }
+  /* 背景のぼかし（backdrop-filter）は Raspberry Pi で非常に重いため使わず、少し濃い半透明にする */
+  #overlay { position: fixed; inset: 0; z-index: 10; background: rgba(10, 12, 20, 0); transition: background .45s; }
+  #overlay.open { background: rgba(10, 12, 20, .7); }
+  /* パネル表示中は、裏の周期表の立方体の厚み（重なった板）を隠して描画を軽くする */
+  body.panel-open .layer { visibility: hidden; }
   #overlay[hidden] { display: none; }
   #panel {
     position: absolute; inset: 24px; display: flex; flex-direction: column;
     transform-origin: 0 0; transition: transform .45s cubic-bezier(.2, .8, .2, 1), opacity .45s;
-    background: rgba(24, 28, 44, .82); color: #e8eaf4;
+    background: rgba(24, 28, 44, .94); color: #e8eaf4;
     border: 1px solid color-mix(in srgb, var(--c) 60%, transparent); border-radius: 18px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .08);
     overflow: hidden;
@@ -70,14 +73,23 @@
   #panel .source { margin-top: 18px; font-size: 12px; opacity: .7; }
   #panel .source a { color: #9cc3ff; }
   #panel .pending { margin-top: 24px; opacity: .75; }
-  #panel .bohr { display: flex; align-items: center; justify-content: center; padding: 22px; border-left: 1px solid rgba(255, 255, 255, .08); }
-  #panel .bohr-frame { width: min(33vw, 33vh); aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 2px dashed rgba(255, 255, 255, .25); border-radius: 18px; color: rgba(255, 255, 255, .4); font-size: 14px; }
+  #panel .bohr { position: relative; display: flex; flex-direction: column; min-height: 0; padding: 14px 18px 10px; border-left: 1px solid rgba(255, 255, 255, .08); }
+  #panel .bohr-mode { align-self: center; display: flex; border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; overflow: hidden; }
+  #panel .bohr-mode button { padding: 5px 18px; border: 0; background: transparent; color: #c8cce0; font-size: 13px; font-weight: 600; cursor: pointer; }
+  #panel .bohr-mode button.on { background: color-mix(in srgb, var(--c) 55%, transparent); color: #fff; }
+  #panel .bohr-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  #panel .bohr-stage canvas { display: block; cursor: grab; }
+  #panel .bohr-svg { width: 100%; max-height: 100%; }
+  #panel .bohr-label { font-weight: 500; }
+  #panel .bohr-msg { color: rgba(255, 255, 255, .55); font-size: 14px; text-align: center; line-height: 1.7; }
+  #panel .bohr-help { min-height: 1.4em; text-align: center; font-size: 12px; opacity: .6; }
+  #panel .bohr-source { text-align: right; font-size: 11px; opacity: .55; }
   /* 縦長画面: 上に基本特性、下にボーアモデル */
   @media (max-aspect-ratio: 1/1) {
     #panel { inset: 10px; }
     #panel .body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
     #panel .bohr { border-left: 0; border-top: 1px solid rgba(255, 255, 255, .08); padding: 14px; }
-    #panel .bohr-frame { width: min(60vw, 33vh); }
+    #panel .bohr-stage { flex: none; height: 38vh; }
   }
 </style>
 </head>
@@ -93,12 +105,14 @@
     <div class="head"></div>
     <div class="body">
       <div class="props"></div>
-      <div class="bohr"><div class="bohr-frame">ボーアモデル（準備中）</div></div>
+      <div class="bohr"></div>
     </div>
   </div>
 </div>
 
 <script src="element-details.js"></script>
+<script src="element-shells.js"></script>
+<script src="bohr.js"></script>
 <script>
 const SYMBOLS = "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
 
@@ -266,6 +280,7 @@ function onElementClick(el, front) {
   renderPanel(el);
   openFrom = front;
   overlay.hidden = false;
+  BOHR.show(panel.querySelector(".bohr"), el.symbol, ELECTRON_SHELLS[el.number]);
   panel.style.transition = "none";
   panel.style.transform = shrinkTo(front);
   panel.style.opacity = "0.4";
@@ -274,15 +289,22 @@ function onElementClick(el, front) {
   panel.style.transition = "";
   panel.style.transform = "none";
   panel.style.opacity = "1";
+  panel.addEventListener("transitionend", () => {
+    if (overlay.classList.contains("open")) document.body.classList.add("panel-open");
+  }, { once: true });
 }
 
 function closePanel() {
   if (overlay.hidden || !overlay.classList.contains("open")) return;
   overlay.classList.remove("open");
+  document.body.classList.remove("panel-open");
   panel.style.transform = shrinkTo(openFrom);
   panel.style.opacity = "0";
   panel.addEventListener("transitionend", () => {
-    if (!overlay.classList.contains("open")) overlay.hidden = true;   // 閉じている途中で再度開いた場合は隠さない
+    if (!overlay.classList.contains("open")) {   // 閉じている途中で再度開いた場合は隠さない
+      overlay.hidden = true;
+      BOHR.stop();   // 見えないアニメーションは止めて軽くする
+    }
   }, { once: true });
 }
 
@@ -293,7 +315,7 @@ addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
 // ---- ズーム / パン / 回転 ----
 const viewport = document.getElementById("viewport");
 const BOARD_W = 18 * CELL, BOARD_H = 10.6 * CELL;
-const DEFAULT_ROT = { x: 22, y: -10 }, ROT_LIMIT = 60;
+const DEFAULT_ROT = { x: 0, y: 0 }, ROT_LIMIT = 60;   // 初期表示は正面から
 let scale = 1, tx = 0, ty = 0, rotX = DEFAULT_ROT.x, rotY = DEFAULT_ROT.y;
 function apply() {
   // 回転の中心は盤面の中央
