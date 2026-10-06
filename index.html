@@ -67,7 +67,7 @@
   #panel .ja { font-size: 28px; font-weight: 700; }
   #panel .en { font-style: italic; opacity: .85; }
   #panel .meta { font-size: 13px; opacity: .7; margin-top: 2px; }
-  #panel .body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; }
+  #panel .body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }   /* 中身の幅で列が広がらないように */
   #panel .props { overflow-y: auto; padding: 8px 22px 22px; }
   #panel h3 { margin: 18px 0 6px; padding: 4px 10px; font-size: 14px; border-radius: 6px; background: color-mix(in srgb, var(--c) 40%, transparent); }
   #panel table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -86,8 +86,9 @@
   #panel .bohr-mode { display: flex; border: 1px solid rgba(255, 255, 255, .2); border-radius: 999px; overflow: hidden; }
   #panel .bohr-mode button { padding: 5px 18px; border: 0; background: transparent; color: #c8cce0; font-size: 13px; font-weight: 600; cursor: pointer; }
   #panel .bohr-mode button.on { background: color-mix(in srgb, var(--c) 55%, transparent); color: #fff; }
-  #panel .bohr-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
-  #panel .bohr-stage canvas { display: block; cursor: grab; }
+  #panel .bohr-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  /* 3D の描画面は枠にぴったり重ねる（描画面の大きさで枠やパネルが広がらないように） */
+  #panel .bohr-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
   #panel .bohr-svg { width: 100%; max-height: 100%; }
   #panel .bohr-label { font-weight: 500; }
   #panel .bohr-msg { color: rgba(255, 255, 255, .55); font-size: 14px; text-align: center; line-height: 1.7; }
@@ -96,7 +97,7 @@
   /* 縦長画面: 上に基本特性、下にボーアモデル */
   @media (max-aspect-ratio: 1/1) {
     #panel { inset: 10px; }
-    #panel .body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+    #panel .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr auto; }
     #panel .bohr { border-left: 0; border-top: 1px solid rgba(255, 255, 255, .08); padding: 14px; }
     #panel .bohr-stage { flex: none; height: 38vh; overflow: hidden; transition: height .35s ease; }
     /* 「たたむ」ボタンは縦長画面だけ。たたむとアニメーション部分の高さが0になり、下へしまわれる */
@@ -129,7 +130,7 @@
 <!-- ?v= はファイル更新時に変える版番号。スマホのブラウザが古いファイルを使い続けないようにする -->
 <script src="element-details.js?v=20261006"></script>
 <script src="element-shells.js?v=20261006"></script>
-<script src="bohr.js?v=20261006"></script>
+<script src="bohr.js?v=20261006b"></script>
 <script>
 const SYMBOLS = "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og".split(" ");
 

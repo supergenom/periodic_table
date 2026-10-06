@@ -1,3 +1,45 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 開発メモ（Claude Code 向け）
+
+ビルド・テスト・lint はない。静的ファイル（index.html + 3つの .js）だけで動く。
+
+- **表示**: `index.html` をブラウザで直接開けば動く（file:// で可）。3D表示だけは Three.js を CDN から読むのでネット接続が必要。
+- **公開**: `main` に push すると GitHub Pages（https://supergenom.github.io/periodic_table/ ）に1〜2分で反映される。作業は `main` に直接コミット・push する運用。`見本_*.html` は意図的にコミットしていない。
+- **版番号の更新（必須）**: `.js` を変更したら、`index.html` の `<script src="…?v=YYYYMMDD">` の版番号を変える。変えないと Android Chrome が古い JS と新しい HTML を混ぜて表示が崩れる（実際に発生した）。
+- **データは手で編集しない**（どちらもスクリプトで再生成する）:
+  - `python3 tools/build_element_details.py` → `element-details.js`（Wikipedia日本語版の情報ボックスの「一般特性」〜「その他」の4区分。要 bs4）。取得した HTML は `tools/.cache/` に残り、再実行時はそれを使う。記事を取り直すならキャッシュを消す。
+  - `python3 tools/build_electron_shells.py` → `element-shells.js`（PubChem の電子配置から殻ごとの電子数を計算）。最後に Wikipedia の「電子殻」との違いを表示する。Lr と Ds の不一致は推定値どうしの差で、想定内。
+- **動作確認**: このマシン（Raspberry Pi 5）には `chromium` があり、`chromium --headless=new --remote-debugging-port=…` と CDP（Node 24 の組み込み WebSocket）で、スクリーンショット・タッチ操作の再現・fps 計測ができる。見た目や性能に関わる変更は、これで確認してから報告する。
+
+### 構成（複数ファイルにまたがる要点）
+
+- **index.html**: 周期表本体。
+  - `SYMBOLS` / `NAMES` → `ELEMENTS`。配置は `positionOf()`（f ブロックは 9・10 行目）と `rowTop()` で決める。
+  - 大きさは CSS 変数 `--cell` / `--size` / `--depth` を JS が読む。
+  - 立方体は、角丸の板（`.layer`）を `LAYERS` 枚重ねたものに、前面（`.front`）を載せて作る。
+  - 盤面の変形は `apply()`（盤面の中央を中心に回転）。`fit()` はタイトルと盤面をまとめて縦中央に置き、下の凡例・操作説明の高さを避ける。
+  - マウス（左: 移動、中ボタン/Shift: 回転、ホイール: 拡大縮小）とタッチ（1本指: 回転、2本指: 移動、ピンチ: 拡大縮小）は、同じ pointer イベントの処理で扱う。ドラッグ直後のクリックは無視する。
+- **詳細パネル**: `onElementClick(el, front)` → `renderPanel()`。中身は `ELEMENT_DETAILS` から作る。
+  - 開くときは `shrinkTo()` の transform で、クリックした立方体の位置からフロートインする。
+  - 開いている間は `body.panel-open` で `.layer` を隠し、描画を軽くする。
+- **bohr.js**: `BOHR.show(container, 記号, 殻の電子数)` / `BOHR.stop()`。
+  - 2D は SVG、3D は Three.js r128。3D は初めて選ばれたときに CDN から読み込む。
+  - アニメーションの次のコマは `next()` で予約し、パネルが閉じているときと、縦長画面で「たたむ」状態のときは止める。
+  - 2D/3D の選択は localStorage に保存する。
+
+### 注意点
+
+- **重さ**: 主な表示先は Raspberry Pi 5。`backdrop-filter`（背景のぼかし）と、パネル裏の約1,300枚の板の再描画が重なると 6fps まで落ちた（対策後は約36fps）。重い CSS 効果を足すときは fps を測る。
+- **Android の高精細画面**: 3D の描画面（canvas）は、大きさを CSS で枠に固定し（`position: absolute; inset: 0`）、`renderer.setSize(w, h, false)` で寸法だけ設定する。パネルの grid は `minmax(0, 1fr)` にする。こうしないと、devicePixelRatio が大きい端末では描画面がパネルを押し広げ、その幅のまま固まって画面が右にずれる（実際に発生した）。スマホ向けの確認では、CDP の `Emulation.setDeviceMetricsOverride` を `{ width: 411, height: 891, deviceScaleFactor: 2.625, mobile: true }` にして試す。
+- **出力フィルター**: 118元素の名前などの長い一覧を1回の出力でまとめて書くと、出力フィルターに止められることがある。データはスクリプトで生成するか、小分けにして書く。
+- **ユーザーへの説明**: 下の仕様書のとおり、日本語で専門用語をかみ砕いて書く。コミット・push は確認してから行う。
+- **下の仕様書について**: 「周期表との連携（予定）」の項目は実装済み（クリックで表示、PubChem から自動読み込み、出典表示）。
+
+---
+
 # ボーアモデル（電子殻アニメーション）仕様書
 
 元素周期表アプリの中で使う「電子殻アニメーション」の仕様です。

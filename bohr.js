@@ -126,7 +126,7 @@ const BOHR = (() => {
   function resize3D() {
     const box = three.renderer.domElement.parentElement;
     if (!box || !box.clientWidth || !box.clientHeight) return;   // たたんで高さ0のときは何もしない
-    three.renderer.setSize(box.clientWidth, box.clientHeight);
+    three.renderer.setSize(box.clientWidth, box.clientHeight, false);   // 表示上の大きさは CSS（枠いっぱい）に任せる
     three.camera.aspect = box.clientWidth / box.clientHeight;
     three.camera.updateProjectionMatrix();
   }
@@ -227,8 +227,10 @@ const BOHR = (() => {
     pause();
     const stage = host.querySelector(".bohr-stage");
     host.querySelectorAll(".bohr-mode button").forEach(b => b.classList.toggle("on", b.dataset.mode === mode));
-    host.querySelector(".bohr-help").textContent = mode === "3d"
-      ? "ドラッグで回転 / ホイール（スマホは2本指）で拡大縮小 / 右ドラッグで移動" : "";
+    const touch = matchMedia("(pointer: coarse)").matches;
+    host.querySelector(".bohr-help").textContent = mode !== "3d" ? ""
+      : touch ? "1本指で回転 / 2本指で拡大縮小・移動"
+      : "ドラッグで回転 / ホイールで拡大縮小 / 右ドラッグで移動";
     if (mode === "3d") show3D(stage, current.symbol, current.counts);
     else show2D(stage, current.symbol, current.counts);
   }
