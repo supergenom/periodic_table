@@ -38,7 +38,10 @@
   .legend-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 14px; }
   #legend span::before { content: ""; display: inline-block; width: 11px; height: 11px; border-radius: 3px; background: var(--c); margin-right: 5px; vertical-align: -1px; }
   #hint { color: #99a; font-size: 12px; text-align: right; }
-  #hint span { white-space: nowrap; }   /* 折り返しは「/」の位置だけ */
+  #hint span, #hint-touch span { white-space: nowrap; }   /* 折り返しは「/」の位置だけ */
+  #hint-touch { display: none; color: #99a; font-size: 12px; text-align: right; }
+  /* 指で操作する画面（スマホ・タブレット）ではタッチ用の操作説明を出す */
+  @media (pointer: coarse) { #hint { display: none; } #hint-touch { display: block; } }
 
   /* ---- 詳細パネル ---- */
   /* 背景のぼかし（backdrop-filter）は Raspberry Pi で非常に重いため使わず、少し濃い半透明にする */
@@ -103,6 +106,7 @@
 <div id="footer">
   <div id="legend"></div>
   <div id="hint"><span>ホイール: 拡大縮小</span> / <span>ドラッグ: 移動</span> / <span>ホイールボタン or Shift+ドラッグ: 回転</span> / <span>余白ダブルクリック: 角度リセット</span></div>
+  <div id="hint-touch"><span>1本指: 回転</span> / <span>2本指: 移動</span> / <span>ピンチ: 拡大縮小</span> / <span>余白ダブルタップ: 角度リセット</span></div>
 </div>
 
 <div id="overlay" hidden>
@@ -353,28 +357,57 @@ function fit() {
 addEventListener("resize", fit);
 fit();
 
-viewport.addEventListener("wheel", e => {
-  e.preventDefault();
-  const factor = Math.exp(-e.deltaY * 0.0015);
+// 指定した画面上の点を中心に拡大縮小する
+function zoomAt(x, y, factor) {
   const next = Math.min(Math.max(scale * factor, 0.2), 8);
   const k = next / scale;
-  tx = e.clientX - (e.clientX - tx) * k;   // カーソル位置を基準に拡大縮小
-  ty = e.clientY - (e.clientY - ty) * k;
+  tx = x - (x - tx) * k;
+  ty = y - (y - ty) * k;
   scale = next;
   apply();
+}
+
+viewport.addEventListener("wheel", e => {
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));   // カーソル位置を基準に拡大縮小
 }, { passive: false });
 
-// 左ドラッグ: 移動 / ホイールボタン or Shift+左ドラッグ: 回転
+// マウス: 左ドラッグ: 移動 / ホイールボタン or Shift+左ドラッグ: 回転
+// タッチ: 1本指ドラッグ: 回転 / 2本指ドラッグ: 移動 / 2本指ピンチ: 拡大縮小
 let drag = null;
+const touches = new Map();   // 画面に触れている指の位置
 const clampRot = v => Math.min(Math.max(v, -ROT_LIMIT), ROT_LIMIT);
+function twoFingers() {
+  const [a, b] = [...touches.values()];
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, dist: Math.hypot(a.x - b.x, a.y - b.y) };
+}
 viewport.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });   // 自動スクロールを止める
 viewport.addEventListener("pointerdown", e => {
+  if (e.pointerType === "touch") {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 1) drag = { x: e.clientX, y: e.clientY, moved: false, mode: "rotate" };
+    else if (touches.size === 2) drag = { ...twoFingers(), moved: true, mode: "pinch" };
+    return;
+  }
   if (e.button !== 0 && e.button !== 1) return;
   const mode = e.button === 1 || e.shiftKey ? "rotate" : "pan";
   drag = { x: e.clientX, y: e.clientY, moved: false, mode };
 });
 addEventListener("pointermove", e => {
   if (!drag) return;
+  if (e.pointerType === "touch") {
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (drag.mode === "pinch") {
+      if (touches.size < 2) return;
+      const now = twoFingers();
+      tx += now.x - drag.x; ty += now.y - drag.y;   // 2本指の中心の動きで移動
+      if (drag.dist > 0) zoomAt(now.x, now.y, now.dist / drag.dist);   // 指の間隔の変化で拡大縮小
+      else apply();
+      Object.assign(drag, now);
+      return;
+    }
+  }
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (!drag.moved && Math.hypot(dx, dy) < 4) return;
   drag.moved = true;
@@ -388,18 +421,41 @@ addEventListener("pointermove", e => {
   drag.x = e.clientX; drag.y = e.clientY;
   apply();
 });
-addEventListener("pointerup", () => {
+function endDrag(e) {
+  if (e.pointerType === "touch") {
+    touches.delete(e.pointerId);
+    if (touches.size === 1 && drag) {   // 2本指→1本指: 残った指から回転を続ける（急に飛ばないよう位置を取り直す）
+      const [p] = touches.values();
+      drag = { x: p.x, y: p.y, moved: true, mode: "rotate" };
+      return;
+    }
+    if (touches.size > 0) return;
+  }
   // ドラッグ直後のクリックで元素の詳細が開かないようにする
-  if (drag?.moved) addEventListener("click", ev => ev.stopPropagation(), { capture: true, once: true });
+  // （タッチではクリックが来ないことがあるので、少し待っても来なければ解除する）
+  if (drag?.moved) {
+    const swallow = ev => ev.stopPropagation();
+    addEventListener("click", swallow, { capture: true, once: true });
+    setTimeout(() => removeEventListener("click", swallow, { capture: true }), 300);
+  }
   drag = null;
   viewport.classList.remove("dragging");
-});
+}
+addEventListener("pointerup", endDrag);
+addEventListener("pointercancel", endDrag);
 
-// 盤面以外をダブルクリックで角度をリセット
-viewport.addEventListener("dblclick", e => {
+// 盤面以外をダブルクリック（スマホはダブルタップ）で角度をリセット
+function resetAngle(e) {
   if (e.target.closest(".cube")) return;
   rotX = DEFAULT_ROT.x; rotY = DEFAULT_ROT.y;
   apply();
+}
+viewport.addEventListener("dblclick", resetAngle);
+let lastTap = 0;
+viewport.addEventListener("pointerup", e => {
+  if (e.pointerType !== "touch" || drag?.moved || touches.size > 1) return;   // 指を動かした・2本指のときは対象外
+  const now = performance.now();
+  if (now - lastTap < 350) { resetAngle(e); lastTap = 0; } else lastTap = now;
 });
 </script>
 </body>
